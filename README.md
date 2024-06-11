@@ -8,3 +8,5 @@ GoSSHMonitor is a simple, web-based SSH client and server monitoring tool built 
 - **Command Execution**: Execute predefined or custom commands on multiple servers.
 - **Server Monitoring**: View real-time metrics such as CPU usage, memory usage, disk usage, and uptime.
 - **Interactive Terminal**: Open a web-based SSH terminal to interact directly with your servers.
+
+![Bildschirmfoto 2024-06-11 um 19 04 51](https://github.com/ashba22/GoSSHMonitor/assets/8026183/6e552eed-48d0-47ef-84a2-7dd02eb0422c)
