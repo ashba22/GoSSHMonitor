@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootswatch/5.3.3/darkly/bootstrap.min.css"
+        integrity="sha512-HDszXqSUU0om4Yj5dZOUNmtwXGWDa5ppESlX98yzbBS+z+3HQ8a/7kcdI1dv+jKq+1V5b01eYurE7+yFjw6Rdg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+
+        .container {
+            margin-top: 50px;
+        }
+
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-title {
+            font-weight: bold;
+        }
+
+        .btn-primary,
+        .btn-danger,
+        .btn-outline-success {
+            border-radius: 50px;
+        }
+
+        .form-control {
+            border-radius: 50px;
+        }
+
+        .pagination .page-item .page-link {
+            border-radius: 50px;
+        }
+
+        #terminal-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        #terminal {
+            width: 80%;
+            height: 80%;
+            background: #1e1e1e;
+            border-radius: 15px;
+            overflow: hidden;
+            padding: 10px;
+        }
+
+        #output {
+            background: #333;
+            color: #fff;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            height: 300px;
+            overflow-y: scroll;
+        }
+
+        .close-terminal-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+        }
+
+        .custom-command {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="jumbotron">
+            <h1 class="display-4"><i class="bi bi-speedometer2"></i> GoSSHMonitor</h1>
+            <p class="lead">A simple web-based SSH client & server monitoring tool</p>
+            <hr class="my-4">
+        </div>
+
+        <div class="row">
+            <div class="col-md-8">
+                <form class="d-flex mb-4" method="GET" action="/">
+                    <input class="form-control me-2" type="search" placeholder="Search" name="search" value="{{.Search}}">
+                    <input type="hidden" name="page" value="1">
+                    <button class="btn btn-outline-success" type="submit">Search</button>
+                </form>
+
+                <div class="row row-cols-1 row-cols-md-2 g-4">
+                    {{range .Servers}}
+                    <div class="col">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">{{.User}}</h5>
+                                <p class="card-text"><strong>Address:</strong> {{.Address}}</p>
+                                <p class="card-text" id="status-{{.Address}}">Loading...</p>
+                                <select class="form-select mb-2" id="commands-{{.Address}}" onchange="toggleCustomCommandInput('{{.Address}}')">
+                                    <option value="">Select a command</option>
+                                    {{range $key, $value := .Commands}}
+                                    <option value="{{$value}}">{{$key}}</option>
+                                    {{end}}
+                                    <option value="custom">Custom Command</option>
+                                </select>
+                                <input type="text" class="form-control mb-2 custom-command" id="custom-command-{{.Address}}" placeholder="Enter custom command">
+                             
+                                <button class="btn btn-outline-success btn-sm" onclick="executeCommand('{{.Address}}')">
+                                    <i class="bi bi-play-circle"></i> Run Command
+                                </button>
+                                <hr class="my-4">
+                                <div class="d-flex justify-content-between mt-2">
+                                    <button class="btn btn-danger btn-sm" onclick="removeServer('{{.Address}}')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                    <button class="btn btn-primary btn-sm" onclick="openTerminal('{{.Address}}')">
+                                        <i class="bi bi-terminal"></i>
+                                    </button>
+                                    <button class="btn btn-info btn-sm" onclick="editServer('{{.ID}}') ">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+
+                <nav aria-label="Page navigation" class="mt-4">
+                    <ul class="pagination justify-content-center">
+                        {{if gt .CurrentPage 1}}
+                        <li class="page-item">
+                            <a class="page-link" href="/?page={{sub .CurrentPage 1}}&search={{.Search}}" aria-label="Previous">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                        {{end}}
+                        {{range $i, $v := seq .TotalPages}}
+                        <li class="page-item {{if eq $.CurrentPage $v}}active{{end}}">
+                            <a class="page-link" href="/?page={{$v}}&search={{$.Search}}">{{$v}}</a>
+                        </li>
+                        {{end}}
+                        {{if lt .CurrentPage .TotalPages}}
+                        <li class="page-item">
+                            <a class="page-link" href="/?page={{add .CurrentPage 1}}&search={{.Search}}" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        {{end}}
+                    </ul>
+                </nav>
+            </div>
+            <div class="col-md-4">
+                <h3 class="">              
+                    {{if eq .TotalServers 0}}
+                    No servers found
+                    {{else if eq .TotalServers 1}}
+                    1 server found
+                    {{else}}
+                    {{.TotalServers}} servers found
+                    {{end}}
+                </h3>
+                <button type="button" class="btn btn-primary" onclick="showAddServerModal()">Add Server</button>
+
+
+
+                <hr class="my-4">
+
+                <form id="commandForm" class="mt-4">
+                    <div class="mb-3">
+                        <label for="command" class="form-label">Execute to All Servers</label>
+                        <input type="text" class="form-control" id="command" placeholder="Enter command">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Execute</button>
+                </form>
+
+                <hr class="my-4">
+
+                <h3>Commands Output</h3>
+                <div id="output" class="mt-4"></div>
+                <button class="btn btn-outline-success mt-4" onclick="document.getElementById('output').innerHTML = ''">Clear Output</button>
+
+              
+            </div>
+        </div>
+    </div>
+
+    <div id="terminal-container">
+        <div class="row">
+            <div class="col-md-12">
+                <h3 class="text-center">
+                    <i class="bi bi-terminal"></i> Connected to Server: <span id="terminal-server-name"></span>
+                    <button class="btn btn-secondary close-terminal-btn" onclick="closeTerminal()">Close Terminal</button>
+                </h3>
+            </div>
+  
+            <div class="col-md-12">
+                <div id="terminal" class="terminal"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="modal fade" id="serverModal" tabindex="-1" aria-labelledby="serverModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="serverForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="serverModalLabel">Add/Edit Server</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="server-id">
+                        <div class="mb-3">
+                            <label for="user" class="form-label">User</label>
+                            <input type="text" class="form-control" id="user" placeholder="Enter username">
+                        </div>
+                        <div class="mb-3">
+                            <label for="address" class="form-label">Address</label>
+                            <input type="text" class="form-control" id="address" placeholder="Enter server address">
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" placeholder="Enter password">
+                        </div>
+                        <div id="commands-container" class="mb-3">
+                            <label for="commands" class="form-label">Commands</label>
+                            <div class="d-flex mb-2">
+                                <input type="text" class="form-control me-2" placeholder="Command Name" id="command-name-0">
+                                <input type="text" class="form-control" placeholder="Command" id="command-0">
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary mb-2" onclick="addCommandField()">Add Command</button>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Save Server</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+
+    <script>
+        let commandCount = 1;
+
+        function addCommandField() {
+            const commandsContainer = document.getElementById('commands-container');
+            const commandField = document.createElement('div');
+            commandField.className = 'd-flex mb-2';
+            commandField.innerHTML = `
+                <input type="text" class="form-control me-2" placeholder="Command Name" id="command-name-${commandCount}">
+                <input type="text" class="form-control" placeholder="Command" id="command-${commandCount}">
+            `;
+            commandsContainer.appendChild(commandField);
+            commandCount++;
+        }
+
+        function resetServerForm() {
+            document.getElementById('server-id').value = '';
+            document.getElementById('user').value = '';
+            document.getElementById('address').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('commands-container').innerHTML = `
+                <div class="d-flex mb-2">
+                    <input type="text" class="form-control me-2" placeholder="Command Name" id="command-name-0">
+                    <input type="text" class="form-control" placeholder="Command" id="command-0">
+                </div>
+            `;
+            commandCount = 1;
+        }
+
+        function toggleCustomCommandInput(address) {
+            const select = document.getElementById(`commands-${address}`);
+            const customCommandInput = document.getElementById(`custom-command-${address}`);
+            if (select.value === "custom") {
+                customCommandInput.style.display = 'block';
+            } else {
+                customCommandInput.style.display = 'none';
+            }
+        }
+
+        document.getElementById('serverForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const id = document.getElementById('server-id').value;
+            const user = document.getElementById('user').value;
+            const address = document.getElementById('address').value;
+            const password = document.getElementById('password').value;
+            const commands = {};
+            for (let i = 0; i < commandCount; i++) {
+                const commandName = document.getElementById(`command-name-${i}`).value;
+                const command = document.getElementById(`command-${i}`).value;
+                if (commandName && command) {
+                    commands[commandName] = command;
+                }
+            }
+            const response = await fetch('/add-server', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ id: id ? parseInt(id) : 0, user: user, address: address, password: password, commands: commands })
+            });
+            const result = await response.json();
+            alert(result.message);
+            location.reload();
+        });
+
+        async function editServer(id) {
+            const response = await fetch(`/get-server/${id}`);
+            const server = await response.json();
+            document.getElementById('server-id').value = id;
+            document.getElementById('user').value = server.user;
+            document.getElementById('address').value = server.address;
+            document.getElementById('password').value = server.password;
+            document.getElementById('commands-container').innerHTML = '';
+            commandCount = 0;
+            for (const [commandName, command] of Object.entries(server.commands)) {
+                const commandField = document.createElement('div');
+                commandField.className = 'd-flex mb-2';
+                commandField.innerHTML = `
+                    <input type="text" class="form-control me-2" placeholder="Command Name" id="command-name-${commandCount}" value="${commandName}">
+                    <input type="text" class="form-control" placeholder="Command" id="command-${commandCount}" value="${command}">
+                `;
+                document.getElementById('commands-container').appendChild(commandField);
+                commandCount++;
+            }
+            const serverModal = new bootstrap.Modal(document.getElementById('serverModal'));
+            serverModal.show();
+        }
+
+        function showAddServerModal() {
+            resetServerForm();
+            const serverModal = new bootstrap.Modal(document.getElementById('serverModal'));
+            serverModal.show();
+        }
+
+        document.getElementById('commandForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const command = document.getElementById('command').value;
+            const response = await fetch('/execute', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ command: command })
+            });
+            const result = await response.json();
+            let outputDiv = document.getElementById('output');
+            outputDiv.innerHTML = '';
+            for (const [server, output] of Object.entries(result)) {
+                outputDiv.innerHTML += `<h5>${server}</h5><pre>${output}</pre>`;
+            }
+        });
+
+        async function removeServer(address) {
+            const response = await fetch('/remove-server', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ address: address })
+            });
+            const result = await response.json();
+            alert(result.message);
+            location.reload();
+        }
+
+        async function fetchServerStatus(address) {
+            const ws = new WebSocket(`ws://${window.location.host}/ws/${address}`);
+            ws.onmessage = function (event) {
+                try {
+                    const metrics = JSON.parse(event.data);
+                    let statusDiv = document.getElementById(`status-${address}`);
+                    statusDiv.innerHTML = `
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">Server Status</h5>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item"><strong>Uptime:</strong> <span class="text-success">${metrics["uptime"]}</span></li>
+                                    <li class="list-group-item"><strong>CPU:</strong> <span class="text-primary">${metrics["cpu"]}</span></li>
+                                    <li class="list-group-item"><strong>Memory:</strong> <span class="text-warning">${metrics["memory"]}</span></li>
+                                    <li class="list-group-item"><strong>Disk:</strong> <span class="text-purple">${metrics["disk"]}</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    `;
+                } catch (error) {
+                    console.error('Error parsing JSON:', error);
+                }
+            };
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            {{range .Servers}}
+            fetchServerStatus('{{.Address}}');
+            {{end}}
+        });
+
+        async function executeCommand(address) {
+            const select = document.getElementById(`commands-${address}`);
+            const customCommandInput = document.getElementById(`custom-command-${address}`);
+            let command = select.value;
+            if (command === "custom") {
+                command = customCommandInput.value;
+            }
+            if (command) {
+                const response = await fetch('/execute-command', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ address: address, command: command })
+                });
+                const result = await response.json();
+                let outputDiv = document.getElementById('output');
+                outputDiv.innerHTML += `<h5>${address}</h5><pre>${result.output}</pre>`;
+            } else {
+                alert('Please select or enter a command');
+            }
+        }
+
+        function openTerminal(address) {
+            document.getElementById('terminal-container').style.display = 'flex';
+            document.getElementById('terminal').innerHTML = '';
+            document.getElementById('terminal-container').classList.add('shadow');
+
+            /// terminal server name 
+            document.getElementById('terminal-server-name').innerText = address;
+
+
+
+            const terminal = new Terminal();
+            const terminalContainer = document.getElementById('terminal');
+            terminal.open(terminalContainer);
+         
+
+
+            const ws = new WebSocket(`ws://${window.location.host}/terminal/${address}`);
+            ws.onopen = () => console.log(`WebSocket connection opened for terminal: ${address}`);
+            ws.onmessage = async function (event) {
+                if (event.data instanceof Blob) {
+                    const text = await event.data.text();
+                    console.log(`Data received: ${text}`);
+                    terminal.write(text);
+                } else {
+                    console.log(`Data received: ${event.data}`);
+                    terminal.write(event.data);
+                }
+            };
+            ws.onerror = (error) => console.error('WebSocket error:', error);
+            ws.onclose = () => {
+                console.log('WebSocket connection closed');
+                document.getElementById('terminal-container').style.display = 'none';
+            };
+
+            terminal.onData(data => {
+                console.log('Data received:', data);
+                ws.send(data);
+            });
+        }
+
+        function closeTerminal() {
+            document.getElementById('terminal-container').style.display = 'none';
+        }
+    </script>
+</body>
+
+</html>
